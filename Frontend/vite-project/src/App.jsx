@@ -12,38 +12,72 @@ function App() {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    socket.on("newMessage", (msg) => {
-      setMessages((msgs) => [...msgs, msg]);
-    });
+    const savedUser = localStorage.getItem("user") || "";
+    const savedMessages =
+      JSON.parse(localStorage.getItem("messages_general")) || [];
 
-    socket.on("userJoined", (msg) => {
-      setMessages((msgs) => [...msgs, { user: "System", message: msg }]);
-    });
+    setUser(savedUser);
+    setMessages(savedMessages);
+
+    if (savedUser) {
+      setJoined(true);
+      socket.emit("joinChannel", "general");
+    }
+  }, []); // 👈 Run only once
+
+  useEffect(() => {
+    if (user) localStorage.setItem("user", user);
+    localStorage.setItem("messages_general", JSON.stringify(messages));
+  }, [user, messages]);
+
+  
+  useEffect(() => {
+    const handleNewMsg = (msg) => {
+      setMessages((prev) => [...prev, msg]);
+    };
+
+    const handleUserJoined = (msg) => {
+      setMessages((prev) => [...prev, { user: "System", message: msg }]);
+    };
+
+    socket.on("newMessage", handleNewMsg);
+    socket.on("userJoined", handleUserJoined);
 
     return () => {
-      socket.off("newMessage");
-      socket.off("userJoined");
+      socket.off("newMessage", handleNewMsg);
+      socket.off("userJoined", handleUserJoined);
     };
   }, []);
 
+  // Auto scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Join chat
   const joinChannel = () => {
     if (user.trim()) {
-      socket.emit("joinChannel", channel);
       setJoined(true);
+      socket.emit("joinChannel", "general");
     }
   };
 
+  // Send message
   const sendMessage = () => {
-    if (input.trim()) {
-      socket.emit("sendMessage", { channel, message: input, user });
-      setInput("");
-    }
+    if (!input.trim()) return;
+
+    const msg = {
+      channel: "general",
+      user,
+      message: input,
+      time: new Date().toISOString(),
+    };
+
+    socket.emit("sendMessage", msg);
+    setInput("");
   };
 
+  // UI
   return (
     <div
       style={{
@@ -53,62 +87,52 @@ function App() {
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
-        fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
         padding: 20,
+        fontFamily: "'Segoe UI', Tahoma, sans-serif",
       }}
     >
       <div
         style={{
+          width: 480,
           backgroundColor: "#1E1E1E",
           borderRadius: 12,
-          width: 480,
           boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+          overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          overflow: "hidden",
         }}
       >
         {!joined ? (
           <div style={{ padding: 30, textAlign: "center" }}>
-            <h2 style={{ marginBottom: 20, fontWeight: "600" }}>Join Chat</h2>
+            <h2 style={{ marginBottom: 20 }}>Join Chat</h2>
+
             <input
-              placeholder="Enter your name"
               value={user}
               onChange={(e) => setUser(e.target.value)}
+              placeholder="Enter your name"
               style={{
                 width: "80%",
-                padding: "12px 16px",
-                borderRadius: 8,
-                border: "none",
-                outline: "none",
-                fontSize: 16,
-                boxShadow: "inset 0 0 6px rgba(255,255,255,0.1)",
-                marginBottom: 20,
+                padding: 12,
                 backgroundColor: "#2C2C2C",
-                color: "#E0E0E0",
+                border: "none",
+                borderRadius: 8,
+                color: "#fff",
+                marginBottom: 20,
               }}
-              autoFocus
             />
+
             <button
               onClick={joinChannel}
+              disabled={!user.trim()}
               style={{
                 padding: "12px 24px",
-                borderRadius: 8,
-                border: "none",
                 backgroundColor: "#4CAF50",
+                border: "none",
                 color: "#fff",
                 fontWeight: "600",
-                fontSize: 16,
+                borderRadius: 8,
                 cursor: "pointer",
-                transition: "background-color 0.3s ease",
               }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.backgroundColor = "#45a049")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.backgroundColor = "#4CAF50")
-              }
-              disabled={!user.trim()}
             >
               Join #{channel}
             </button>
@@ -117,25 +141,25 @@ function App() {
           <>
             <header
               style={{
-                padding: "20px",
+                padding: "16px",
                 backgroundColor: "#292929",
                 borderBottom: "1px solid #333",
-                fontWeight: "600",
-                fontSize: 20,
-                color: "#FFF",
+                fontWeight: 600,
               }}
             >
               Channel: #{channel}
             </header>
+
+            {/* Chat Messages */}
             <div
               style={{
-                flexGrow: 1,
+                flex: 1,
                 overflowY: "auto",
-                padding: "20px 24px",
-                backgroundColor: "#121212",
+                padding: 20,
+                gap: 12,
                 display: "flex",
                 flexDirection: "column",
-                gap: 12,
+                backgroundColor: "#121212",
               }}
             >
               {messages.map((msg, i) => (
@@ -145,39 +169,38 @@ function App() {
                     alignSelf: msg.user === user ? "flex-end" : "flex-start",
                     backgroundColor:
                       msg.user === "System"
-                        ? "#3B3B3B"
+                        ? "#444"
                         : msg.user === user
                         ? "#4CAF50"
                         : "#2E2E2E",
-                    color: msg.user === user ? "#fff" : "#ccc",
                     padding: "10px 16px",
-                    borderRadius: "16px",
+                    borderRadius: 16,
                     maxWidth: "75%",
-                    wordBreak: "break-word",
-                    fontSize: 14,
-                    boxShadow: "0 2px 6px rgba(0,0,0,0.6)",
+                    color: "#fff",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
                   }}
                 >
                   {msg.user !== "System" && (
                     <div
                       style={{
                         fontSize: 12,
-                        fontWeight: "600",
+                        opacity: 0.7,
                         marginBottom: 4,
-                        opacity: 0.75,
                       }}
                     >
                       {msg.user}
                     </div>
                   )}
+
                   <div>{msg.message}</div>
+
                   {msg.time && (
                     <div
                       style={{
+                        marginTop: 4,
                         fontSize: 10,
                         textAlign: "right",
-                        opacity: 0.5,
-                        marginTop: 6,
+                        opacity: 0.6,
                       }}
                     >
                       {new Date(msg.time).toLocaleTimeString()}
@@ -185,8 +208,11 @@ function App() {
                   )}
                 </div>
               ))}
+
               <div ref={messagesEndRef} />
             </div>
+
+            {/* Input Box */}
             <footer
               style={{
                 display: "flex",
@@ -196,44 +222,32 @@ function App() {
               }}
             >
               <input
-                placeholder="Type a message..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                placeholder="Type a message..."
                 style={{
-                  flexGrow: 1,
-                  padding: "12px 16px",
+                  flex: 1,
+                  padding: 12,
                   borderRadius: 24,
                   border: "none",
-                  outline: "none",
-                  fontSize: 16,
                   backgroundColor: "#212121",
-                  color: "#E0E0E0",
-                  marginRight: 12,
-                  boxShadow: "inset 0 0 6px rgba(255,255,255,0.1)",
+                  color: "#fff",
+                  marginRight: 10,
                 }}
-                autoFocus
               />
+
               <button
                 onClick={sendMessage}
-                style={{
-                  padding: "12px 24px",
-                  borderRadius: 24,
-                  border: "none",
-                  backgroundColor: "#4CAF50",
-                  color: "#fff",
-                  fontWeight: "600",
-                  fontSize: 16,
-                  cursor: "pointer",
-                  transition: "background-color 0.3s ease",
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.backgroundColor = "#45a049")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.backgroundColor = "#4CAF50")
-                }
                 disabled={!input.trim()}
+                style={{
+                  padding: "12px 20px",
+                  backgroundColor: "#4CAF50",
+                  border: "none",
+                  color: "#fff",
+                  borderRadius: 24,
+                  cursor: "pointer",
+                }}
               >
                 Send
               </button>
